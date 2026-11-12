@@ -1,0 +1,48 @@
+name: Publish and expire Contatto previews
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: contatto-pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - name: Remove expired previews
+        id: expiry
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            count=$(python3 expire_previews.py)
+            if [ "$count" = "0" ]; then break; fi
+            git config user.name 'Contatto'
+            git config user.email 'contatto@users.noreply.github.com'
+            git add -A -- public previews.json
+            git commit -m 'Remove expired Contatto previews'
+            if git push origin HEAD:main; then break; fi
+            if [ "$attempt" = "3" ]; then exit 1; fi
+          done
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+          retention-days: 1
+      - uses: actions/deploy-pages@v4
+        id: deployment
