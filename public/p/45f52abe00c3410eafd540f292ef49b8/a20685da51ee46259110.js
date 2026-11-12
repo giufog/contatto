@@ -1,0 +1,1 @@
+document.getElementById("check").addEventListener("click",()=>{document.getElementById("result").textContent="Il pulsante funziona anche nella copia online."});
