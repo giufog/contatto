@@ -15,6 +15,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      PAGES_ARTIFACT: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -41,8 +43,28 @@ jobs:
           done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
+        id: artifact
         with:
+          name: ${{ env.PAGES_ARTIFACT }}
           path: public
           retention-days: 1
+      - name: Wait for the uploaded artifact to be visible
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          for attempt in {1..12}; do
+            visible=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" --jq ".artifacts[] | select(.id == ${ARTIFACT_ID} and .expired == false) | .name") || visible=''
+            if [ "$visible" = "$PAGES_ARTIFACT" ]; then exit 0; fi
+            echo "Waiting for the uploaded Pages artifact ($attempt/12)."
+            sleep 5
+          done
+          echo '::error::The uploaded Pages artifact is still not visible.'
+          exit 1
       - uses: actions/deploy-pages@v4
         id: deployment
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT }}
